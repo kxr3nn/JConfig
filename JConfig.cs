@@ -1,18 +1,23 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
-using System.Threading.Tasks;
 using Newtonsoft.Json;
+using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 
 public class JConfig
 {
     private readonly string filePath;
     private readonly Type dataType;
     private object data;
+    private Dictionary<int, string> comments; // Словарь для хранения строк-комментариев
 
     public JConfig(string filePath, Type dataType, ELoadType loadType = ELoadType.DEFAULT)
     {
         this.filePath = filePath;
         this.dataType = dataType;
+        this.comments = new Dictionary<int, string>(); // Инициализация словаря комментариев
+
         if (loadType == ELoadType.DEFAULT)
         {
             Load();
@@ -23,15 +28,54 @@ public class JConfig
         }
     }
 
+    // Добавляем метод для обновления словаря комментариев
+    private void UpdateComments(string jsonString)
+    {
+        string[] lines = jsonString.Split('\n');
+        comments.Clear();
+
+        for (int i = 0; i < lines.Length; i++)
+        {
+            string line = lines[i].Trim();
+            if (line.StartsWith("//"))
+            {
+                comments[i] = line;
+                lines[i] = string.Empty; // Удаляем комментарий из JSON строки
+            }
+        }
+
+        jsonString = string.Join("\n", lines);
+        jsonString = Regex.Replace(jsonString, @"^\s*$\n|\r", string.Empty, RegexOptions.Multiline); // Удаляем пустые строки
+        data = JsonConvert.DeserializeObject(jsonString, dataType);
+
+        foreach (var comment in comments)
+        {
+            Console.WriteLine($"JComment {comment.Key} :: {comment.Value}");
+        }
+    }
+
     public void Update()
     {
         string jsonString = JsonConvert.SerializeObject(data, Formatting.Indented);
+
+        // Добавляем комментарии к строке JSON перед сохранением
+        foreach (var kvp in comments)
+        {
+            jsonString = InsertComment(jsonString, kvp.Key, kvp.Value);
+        }
+
         File.WriteAllText(filePath, jsonString);
     }
 
     public async Task UpdateAsync()
     {
         string jsonString = JsonConvert.SerializeObject(data, Formatting.Indented);
+
+        // Добавляем комментарии к строке JSON перед сохранением
+        foreach (var kvp in comments)
+        {
+            jsonString = InsertComment(jsonString, kvp.Key, kvp.Value);
+        }
 
         using (StreamWriter writer = new StreamWriter(filePath))
         {
@@ -49,7 +93,7 @@ public class JConfig
         }
 
         string jsonString = File.ReadAllText(filePath);
-        data = JsonConvert.DeserializeObject(jsonString, dataType);
+        UpdateComments(jsonString); // Обновляем словарь комментариев при загрузке
     }
 
     public async Task LoadAsync()
@@ -64,7 +108,7 @@ public class JConfig
         using (StreamReader reader = new StreamReader(filePath))
         {
             string jsonString = await reader.ReadToEndAsync();
-            data = JsonConvert.DeserializeObject(jsonString, dataType);
+            UpdateComments(jsonString); // Обновляем словарь комментариев при асинхронной загрузке
         }
     }
 
@@ -108,5 +152,24 @@ public class JConfig
         {
             await writer.WriteAsync(jsonString);
         }
+    }
+
+    // Метод для вставки комментария в JSON строку
+    private string InsertComment(string jsonString, int lineIndex, string comment)
+    {
+        string[] lines = jsonString.Split('\n');
+
+        if (lineIndex >= lines.Length)
+        {
+            // Если индекс больше или равен длине массива строк, добавляем комментарий в конец
+            jsonString += $"\n{comment}";
+        }
+        else
+        {
+            lines[lineIndex] = comment + "\n" + lines[lineIndex];
+            jsonString = string.Join("\n", lines);
+        }
+
+        return jsonString;
     }
 }
