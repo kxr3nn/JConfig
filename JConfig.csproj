@@ -44,6 +44,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="JConfigEvents.cs" />
     <Compile Include="Models\ELoadType.cs" />
     <Compile Include="JConfig.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

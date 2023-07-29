@@ -5,32 +5,27 @@ using Newtonsoft.Json;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
-public class JConfig
+public class JConfig : IDisposable
 {
     private readonly string filePath;
     private readonly Type dataType;
     private object data;
     private Dictionary<int, string> comments; // Словарь для хранения строк-комментариев
-
-    public string Name;
-    public event Action<string, int, int> OnLoaded;
-    public event Action OnUpdated;
+    private int totalLoadedLenght;
+    
+    public string Name => dataType.Name;
+    public int Comments => comments.Count;
+    public int LoadedLenght => totalLoadedLenght;
 
     public JConfig(string filePath, Type dataType, ELoadType loadType = ELoadType.DEFAULT)
     {
         this.filePath = filePath;
         this.dataType = dataType;
         this.comments = new Dictionary<int, string>(); // Инициализация словаря комментариев
-        Name = dataType.Name;
+        this.totalLoadedLenght = 0;
 
-        if (loadType == ELoadType.DEFAULT)
-        {
-            Load();
-        }
-        if (loadType == ELoadType.ASYNC)
-        {
-            _ = LoadAsync();
-        }
+        if (loadType == ELoadType.DEFAULT) Load();
+        if (loadType == ELoadType.ASYNC) Task.Run(() => LoadAsync());
     }
 
     // Добавляем метод для обновления словаря комментариев
@@ -52,12 +47,9 @@ public class JConfig
         jsonString = string.Join("\n", lines);
         jsonString = Regex.Replace(jsonString, @"^\s*$\n|\r", string.Empty, RegexOptions.Multiline); // Удаляем пустые строки
         data = JsonConvert.DeserializeObject(jsonString, dataType);
-        OnLoaded?.Invoke(Name, jsonString.Length, comments.Count);
+        totalLoadedLenght = jsonString.Length;
 
-        /*foreach (var comment in comments)
-        {
-            Console.WriteLine($"JComment {comment.Key} :: {comment.Value}");
-        }*/
+        JConfigEvents.Invoke_OnLoaded(this);
     }
 
     public void Update()
@@ -71,7 +63,8 @@ public class JConfig
         }
 
         File.WriteAllText(filePath, jsonString);
-        OnUpdated?.Invoke();
+        
+        JConfigEvents.Invoke_OnUpdated(this);
     }
 
     public async Task UpdateAsync()
@@ -88,7 +81,8 @@ public class JConfig
         {
             await writer.WriteAsync(jsonString);
         }
-        OnUpdated?.Invoke();
+        
+        JConfigEvents.Invoke_OnUpdated(this);
     }
 
     public void Load()
@@ -97,7 +91,9 @@ public class JConfig
         {
             data = CreateDefaultConfig();
             SaveDefaultConfig();
-            //throw new FileNotFoundException($"JSON file not found: {filePath}");
+
+            JConfigEvents.Invoke_OnError(
+                this, new FileNotFoundException($"JSON file not found: {filePath}"));
         }
 
         string jsonString = File.ReadAllText(filePath);
@@ -110,7 +106,9 @@ public class JConfig
         {
             data = CreateDefaultConfig();
             await SaveDefaultConfigAsync();
-            //throw new FileNotFoundException($"JSON file not found: {filePath}");
+
+            JConfigEvents.Invoke_OnError(
+                this, new FileNotFoundException($"JSON file not found: {filePath}"));
         }
 
         using (StreamReader reader = new StreamReader(filePath))
@@ -124,7 +122,8 @@ public class JConfig
     {
         if (data == null)
         {
-            throw new InvalidOperationException("JSON data has not been loaded.");
+            JConfigEvents.Invoke_OnError(
+                this, new InvalidOperationException("JSON data has not been loaded."));
         }
 
         return (T)data;
@@ -134,7 +133,8 @@ public class JConfig
     {
         if (data == null)
         {
-            throw new InvalidOperationException("JSON data has not been loaded.");
+            JConfigEvents.Invoke_OnError(
+                this, new InvalidOperationException("JSON data has not been loaded."));
         }
 
         return data;
@@ -179,5 +179,11 @@ public class JConfig
         }
 
         return jsonString;
+    }
+
+    public void Dispose()
+    {
+        data = null;
+        comments = null;
     }
 }
