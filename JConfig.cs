@@ -12,14 +12,16 @@ public class JConfig
     private object data;
     private Dictionary<int, string> comments; // Словарь для хранения строк-комментариев
 
-    public event EventHandler OnLoaded;
-    public event EventHandler OnUpdated;
+    public string Name;
+    public event Action<string, int, int> OnLoaded;
+    public event Action OnUpdated;
 
     public JConfig(string filePath, Type dataType, ELoadType loadType = ELoadType.DEFAULT)
     {
         this.filePath = filePath;
         this.dataType = dataType;
         this.comments = new Dictionary<int, string>(); // Инициализация словаря комментариев
+        Name = dataType.Name;
 
         if (loadType == ELoadType.DEFAULT)
         {
@@ -50,7 +52,7 @@ public class JConfig
         jsonString = string.Join("\n", lines);
         jsonString = Regex.Replace(jsonString, @"^\s*$\n|\r", string.Empty, RegexOptions.Multiline); // Удаляем пустые строки
         data = JsonConvert.DeserializeObject(jsonString, dataType);
-        OnLoaded?.Invoke(this, null);
+        OnLoaded?.Invoke(Name, jsonString.Length, comments.Count);
 
         /*foreach (var comment in comments)
         {
@@ -69,7 +71,7 @@ public class JConfig
         }
 
         File.WriteAllText(filePath, jsonString);
-        OnUpdated?.Invoke(this, null);
+        OnUpdated?.Invoke();
     }
 
     public async Task UpdateAsync()
@@ -86,7 +88,7 @@ public class JConfig
         {
             await writer.WriteAsync(jsonString);
         }
-        OnUpdated?.Invoke(this, null);
+        OnUpdated?.Invoke();
     }
 
     public void Load()
